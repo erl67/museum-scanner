@@ -1,2 +1,5 @@
-# museum-scanner
-A simple app to scan and store museum data cards
+Process_Images.ps1
+
+PowerShell script to process image scans from CZUR
+Renames files to JPEG folder
+Converts files from JPEG folder to TIFF folder
