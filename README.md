@@ -1,5 +1,3 @@
-Process_Images.ps1
-
 # Egg Slip Scanning – PowerShell Workflow
 
 A fast, repeatable process for organizing CZUR scans into `JPEG/` and `TIFF/` derivatives, with consistent naming and light automation.
@@ -15,13 +13,13 @@ A fast, repeatable process for organizing CZUR scans into `JPEG/` and `TIFF/` de
 * Inside each species folder the script creates:
 
   * `JPEG/` – renamed copies for review/renaming
-  * `TIFF/` – final LZW-compressed TIFFs (created from `JPEG/`)
+  * `TIFF/` – final LZW-compressed TIFFs (from `JPEG/`)
 
 **File naming**
 
 * Catalogued placeholder: `Genus_species_E01.jpg`, `Genus_species_E02.jpg`, … (2-digit zero-padded)
 * Uncatalogued placeholder: `Genus_species_Uncatalogued01.jpg`, `…02.jpg`, …
-* Later, you manually replace `E##` with the **actual catalog number** (e.g., `E1234`), and tag backs as `(A)` / `(B)` when needed.
+* Later, manually replace `E##` with the **actual catalog number** (e.g., `E1234`), and tag backs as `(A)` / `(B)` when needed.
 
 **Timestamp extraction**
 
@@ -59,7 +57,7 @@ A fast, repeatable process for organizing CZUR scans into `JPEG/` and `TIFF/` de
 
 1. **Connect the CZUR scanner** and open CZUR software.
 2. Set **storage folder** to the *Family* folder you’re working on.
-3. In **File Explorer**, create species folders as needed. Use the patterns above.
+3. Species folders have been **pre-created by the `CreateSpeciesFolders` script**. You should only need to create a folder manually for special cases like `Genus_species_(uncatalogued)`.
 
 ---
 
@@ -71,11 +69,13 @@ A fast, repeatable process for organizing CZUR scans into `JPEG/` and `TIFF/` de
 
    * Scan those first; mark their **E numbers** yellow in the spreadsheet.
    * Copy those images into the correct **species** folder later.
-4. If an envelope already shows initials/“scanned”, still scan the back to track it in batch context.
+4. If an envelope already shows initials/“scanned,” still scan the back and front to keep track. Rename folder as:
+
+   * `Genus_species - 11SEP25 ERL`
 5. If a species envelope is **missing**, create a placeholder folder:
 
    * `Genus_species - Missing`
-6. At the **end of a Family**, remember to change CZUR’s storage folder to the next Family.
+6. At the **end of a Family**, change CZUR’s storage folder to the next Family.
 
 ---
 
@@ -84,7 +84,9 @@ A fast, repeatable process for organizing CZUR scans into `JPEG/` and `TIFF/` de
 1. In Explorer, use the **envelope scans** to separate species.
 2. Copy each species’ slip scans into the **matching species folder**.
 
-   * Do **not** copy the envelope scan into the species folder (keep it as a visual separator only).
+   * Do **not** copy the envelope scan into the species folder.
+   * It may be useful to have the timestamps of when a species was scanned, in case a scan is misplaced.
+   * Keep it only as a visual separator for personal reference, don't transfer it to USB drive 
 3. For long-envelope items, confirm destination via the **spreadsheet** and place them correctly.
 
 ---
@@ -93,13 +95,13 @@ A fast, repeatable process for organizing CZUR scans into `JPEG/` and `TIFF/` de
 
 1. In Explorer, **Shift+Right-click** the *species* folder → **Open PowerShell window here**.
 
-2. Run the script:
+2. Run:
 
    ```
    ..\..\..\Process-Images.ps1
    ```
 
-   (You can type `..\..\..\P` then press **Tab** to autocomplete.)
+   (You can type `..\..\..\P` then press **Tab** to autocomplete. Use **Up Arrow** to repeat later.)
 
 3. **First run** (no `JPEG/` yet):
 
@@ -114,10 +116,10 @@ A fast, repeatable process for organizing CZUR scans into `JPEG/` and `TIFF/` de
 4. **Spreadsheet check**
 
    * Check off scans; fill in scan date.
-   * If something is missing: check the **Zeros** sheet, re-check the envelope (slips can stick), verify numbers, rescan if needed.
+   * If something is missing: check the **Zeros** sheet; re-check envelope (slips can stick); verify numbers; rescan if needed.
    * Rescans: drop into the *Family* folder, copy into the species folder, then into `JPEG/` and rename manually.
    * If still missing, highlight **red** in the spreadsheet.
-   * Consolidate any items highlighted **yellow** (from long envelopes) into the correct species; use another long envelope if needed and include the original small envelope.
+   * Consolidate any **yellow** items (from long envelopes) into the correct species; use another long envelope if needed and include the original small envelope.
    * Reorder physical cards in the envelope to **numerical order** if needed.
 
 5. **Second run** (with renamed JPEGs):
@@ -126,17 +128,19 @@ A fast, repeatable process for organizing CZUR scans into `JPEG/` and `TIFF/` de
    ..\..\..\Process-Images.ps1
    ```
 
-   * Script makes `TIFF/` (LZW-compressed) from your `JPEG/` files.
+   * Script makes `TIFF/` (LZW) from your `JPEG/` files.
    * Automatically advances to the **next species folder** and prompts you to run it again there.
 
 ---
 
 ## Tips
 
-* Use **Up Arrow** in PowerShell to repeat the last command—no need to retype the path.
 * Keep the **original CZUR files** in the species folder (outside `JPEG/`/`TIFF/`) for provenance.
 * If both `JPEG/` and `TIFF/` already contain files, the script warns and exits—double-check you’re in the right place.
 * If both subfolders exist but are empty, the script deletes them and restarts cleanly.
+* If both subfolders exist and have files, the script informs you. Check they are complete, and manually change directory to next species folder.
+* If the scanner is working well, it may be best to get as many scans done as possible before renaming.
+* If scanner looks out of focus, wiggle the card, or back out of scan mode and reenter it.
 
 ---
 
@@ -148,6 +152,7 @@ A fast, repeatable process for organizing CZUR scans into `JPEG/` and `TIFF/` de
 * Run order: **create `JPEG/` → rename** → **create `TIFF/`**.
 * The script then **moves you to the next species** automatically.
 
+---
 
 <p align="center">
   <img src="https://github.com/erl67/museum-scanner/raw/main/output.png" alt="Script Output">
