@@ -1,6 +1,7 @@
 # Get current folder and species name
 $folder = Get-Location
 $folderName = Split-Path $folder -Leaf
+$width = 80
 
 # Check if folder contains "(uncatalogued)"
 if ($folderName -match '(.+)_\(uncatalogued\)') {
@@ -73,13 +74,25 @@ if (-not $jpegExists) {
     
         $counter++
     }
-    
-    Write-Host "`nDone! Renamed $($counter - 1) files into JPEG folder." -ForegroundColor Green
-    
+
+    Write-Host    
+
+    $lines = @(
+        "Next steps:",
+        "  1. Use explorer and update file names to include actual catalogue number",
+        "  2. Verify catalogue numbers with spreadsheet, fix errors, annotate scan date",
+        "  3. Run script again to create TIFF files"
+    )
+
+    foreach ($l in $lines) {
+        Write-Host $l.PadRight($width) -ForegroundColor Magenta -BackgroundColor Black
+    }
+    Write-Host
+
     if ($isUncatalogued) {
-        Write-Host "Files renamed as Uncatalogued. Adjust numbers as necessary before running again to create TIFFs.`n" -ForegroundColor Yellow
+        Write-Host "Files renamed as Uncatalogued. Adjust numbers sequentially before running again to create TIFFs.`n" -ForegroundColor Yellow
     } else {
-        Write-Host "Update the JPEG files with actual catalog numbers before running again to create TIFFs.`n" -ForegroundColor Yellow
+        #Write-Host "Update the JPEG files with actual catalog numbers before running again to create TIFFs.`n" -ForegroundColor Yellow
     }
     
     exit
@@ -140,19 +153,38 @@ if ($jpegExists -and -not $tiffExists) {
             $counter++
         }
     }
-    
-    # Move up one directory to avoid accidentally using the same folder
-    cd ..
-    
+
     Write-Host "`nDone! Processed $($counter - 1) files into TIFF.`n" -ForegroundColor Green
 
-    $width = 80  # Adjust this to your preferred width
-    Write-Host
-    Write-Host "$('Next steps:'.PadRight($width))" -ForegroundColor Magenta -BackgroundColor Black
-    Write-Host "$('  1. Create a new directory for the next species (use: mkdir Genus_species)'.PadRight($width))" -ForegroundColor Magenta -BackgroundColor Black
-    Write-Host "$('  2. Change directory to new species (use: cd Genus_species)'.PadRight($width))" -ForegroundColor Magenta -BackgroundColor Black
-    Write-Host "$('  3. Update the storage folder in CZUR app to the new directory'.PadRight($width))"-ForegroundColor Magenta -BackgroundColor Black
-    Write-Host
+    # Move to next species alphabetically
+    $current = Get-Item .
+    $parent  = $current.Parent
+    $folders = Get-ChildItem -Path $parent.FullName -Directory | Sort-Object Name
+
+    # Find the index of the current folder
+    $index = $folders.Name.IndexOf($current.Name)
+
+    # If there is a next folder, move into it
+    if ($index -ge 0 -and $index -lt ($folders.Count - 1)) {
+        $nextFolder = $folders[$index + 1].FullName
+        $nextFolderName = $folders[$index + 1].Name
+        Set-Location $nextFolder
+        #Write-Host "Moved to next folder: $nextFolder"
+        
+        $lines = @(
+            "Next steps:",
+            "  1. Folder updated to the next species ($nextFolderName)",
+            "  2. Run script again to start processing next species of scans"
+        )
+        foreach ($l in $lines) {
+            Write-Host $l.PadRight($width) -ForegroundColor Magenta -BackgroundColor Black
+        }
+        Write-Host
+    }
+    else {
+        Write-Host "You are already in the last folder. No next folder exists."
+    }
+
     exit
 }
 
