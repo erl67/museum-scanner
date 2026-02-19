@@ -183,6 +183,7 @@ if ($jpegExists -and -not $tiffExists) {
     }
     else {
         Write-Host "You are already in the last folder. No next folder exists."
+        cd ..
     }
 
     exit
