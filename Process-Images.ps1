@@ -1,9 +1,30 @@
-# Get current folder and species name
-$folder = Get-Location
-$folderName = Split-Path $folder -Leaf
+[CmdletBinding()]
+param(
+    # Defaults to the folder from which the script is launched.
+    # You can also pass a species folder explicitly with -SpeciesFolder.
+    [Parameter(Position = 0)]
+    [string]$SpeciesFolder = (Get-Location).Path
+)
+
+# Resolve the species folder independently of the script's own location.
+try {
+    $folder = Get-Item -LiteralPath $SpeciesFolder -ErrorAction Stop
+} catch {
+    Write-Error "Species folder not found: $SpeciesFolder"
+    return
+}
+
+if (-not $folder.PSIsContainer) {
+    Write-Error "The species path must be a folder: $SpeciesFolder"
+    return
+}
+
+$folderName = $folder.Name
 $width = 80
 
-# Check if folder contains "(uncatalogued)"
+Write-Host "Processing species folder: $($folder.FullName)`n" -ForegroundColor Cyan
+
+# Check whether the species folder name contains "_(uncatalogued)".
 if ($folderName -match '(.+)_\(uncatalogued\)') {
     $species = $matches[1]
     $isUncatalogued = $true
@@ -12,58 +33,56 @@ if ($folderName -match '(.+)_\(uncatalogued\)') {
     $isUncatalogued = $false
 }
 
-$jpegFolder = Join-Path $folder "JPEG"
-$tiffFolder = Join-Path $folder "TIFF"
+$jpegFolder = Join-Path -Path $folder.FullName -ChildPath "JPEG"
+$tiffFolder = Join-Path -Path $folder.FullName -ChildPath "TIFF"
 
-$jpegExists = Test-Path $jpegFolder
-$tiffExists = Test-Path $tiffFolder
+$jpegExists = Test-Path -LiteralPath $jpegFolder -PathType Container
+$tiffExists = Test-Path -LiteralPath $tiffFolder -PathType Container
 
-# Case 1: JPEG folder doesn't exist - create it and rename files
+# Case 1: JPEG folder does not exist; create it and rename the images.
 if (-not $jpegExists) {
     Write-Host "JPEG folder not found. Creating and processing images...`n" -ForegroundColor Green
-    
+
     New-Item -ItemType Directory -Path $jpegFolder | Out-Null
-    
-    # Get files to process
-    $files = Get-ChildItem -Path $folder -File -Filter *.jpg |
-             Where-Object { $_.DirectoryName -ne $jpegFolder } |
-             Sort-Object LastWriteTime
-    
+
+    $files = @(
+        Get-ChildItem -LiteralPath $folder.FullName -File -Filter *.jpg |
+            Sort-Object LastWriteTime
+    )
+
     if ($files.Count -eq 0) {
-        Write-Host "ERROR: No JPG files found in the folder!" -ForegroundColor Red
-        exit
+        Write-Host "ERROR: No JPG files found in the species folder!" -ForegroundColor Red
+        return
     }
-    
+
     $counter = 1
-    
+
     foreach ($file in $files) {
-        # zero-pad to 2 digits
         $num = "{0:D2}" -f $counter
-    
-        # build new filename based on catalogued status
+
         if ($isUncatalogued) {
             $newName = "{0}_Uncatalogued{1}{2}" -f $species, $num, $file.Extension
         } else {
             $newName = "{0}_E{1}{2}" -f $species, $num, $file.Extension
         }
-    
-        $destPath = Join-Path $jpegFolder $newName
-    
-        Copy-Item -Path $file.FullName -Destination $destPath
-    
-        # Extract date/time from original filename
+
+        $destPath = Join-Path -Path $jpegFolder -ChildPath $newName
+        Copy-Item -LiteralPath $file.FullName -Destination $destPath
+
+        # Extract date and time from the original filename.
         if ($file.Name -match '(\d{4})_(\d{2})_(\d{2})_(\d{2})_(\d{2})_(\d{2})') {
-            $year = $matches[1]
-            $month = $matches[2]
-            $day = $matches[3]
-            $hour = $matches[4]
-            $minute = $matches[5]
-            $second = $matches[6]
-            
             try {
-                $timestamp = Get-Date -Year $year -Month $month -Day $day -Hour $hour -Minute $minute -Second $second
-                (Get-Item $destPath).LastWriteTime = $timestamp
-                (Get-Item $destPath).CreationTime = $timestamp
+                $timestamp = Get-Date `
+                    -Year $matches[1] `
+                    -Month $matches[2] `
+                    -Day $matches[3] `
+                    -Hour $matches[4] `
+                    -Minute $matches[5] `
+                    -Second $matches[6]
+
+                $copiedFile = Get-Item -LiteralPath $destPath
+                $copiedFile.LastWriteTime = $timestamp
+                $copiedFile.CreationTime = $timestamp
                 Write-Host "Copied: $($file.Name) -> $newName (Date: $timestamp)"
             } catch {
                 Write-Host "Copied: $($file.Name) -> $newName (Could not parse date)"
@@ -71,142 +90,145 @@ if (-not $jpegExists) {
         } else {
             Write-Host "Copied: $($file.Name) -> $newName"
         }
-    
+
         $counter++
     }
 
-    Write-Host    
+    Write-Host
 
     $lines = @(
         "Next steps:",
-        "  1. Use explorer and update file names to include actual catalogue number",
-        "  2. Verify catalogue numbers with spreadsheet, fix errors, annotate scan date",
-        "  3. Run script again to create TIFF files"
+        "  1. Use Explorer and update file names to include the actual catalogue number",
+        "  2. Verify catalogue numbers with the spreadsheet, fix errors, and annotate the scan date",
+        "  3. Run the script again to create TIFF files"
     )
 
-    foreach ($l in $lines) {
-        Write-Host $l.PadRight($width) -ForegroundColor Magenta -BackgroundColor Black
+    foreach ($line in $lines) {
+        Write-Host $line.PadRight($width) -ForegroundColor Magenta -BackgroundColor Black
     }
+
     Write-Host
 
     if ($isUncatalogued) {
         Write-Host "Files renamed as Uncatalogued. Adjust numbers sequentially before running again to create TIFFs.`n" -ForegroundColor Yellow
-    } else {
-        #Write-Host "Update the JPEG files with actual catalog numbers before running again to create TIFFs.`n" -ForegroundColor Yellow
     }
-    
-    exit
+
+    return
 }
 
-# Case 2: JPEG exists but TIFF doesn't - convert to TIFF
+# Case 2: JPEG exists but TIFF does not; convert the JPEG files to TIFF.
 if ($jpegExists -and -not $tiffExists) {
     Write-Host "JPEG folder found. Converting to TIFF...`n" -ForegroundColor Green
-    
+
     Add-Type -AssemblyName System.Drawing
-    
-    # Create TIFF folder
     New-Item -ItemType Directory -Path $tiffFolder | Out-Null
-    
-    # Get all JPEGs from the JPEG subfolder
-    $files = Get-ChildItem -Path (Join-Path $jpegFolder "*.jpg")
-    
+
+    $files = @(
+        Get-ChildItem -LiteralPath $jpegFolder -File -Filter *.jpg |
+            Sort-Object Name
+    )
+
     if ($files.Count -eq 0) {
-        Write-Host "ERROR: No JPG files found in JPEG folder!" -ForegroundColor Red
-        exit
+        Write-Host "ERROR: No JPG files found in the JPEG folder!" -ForegroundColor Red
+        return
     }
-    
+
     $counter = 1
     $total = $files.Count
-    
+
     foreach ($file in $files) {
+        $memoryStream = $null
+        $jpeg = $null
+
         try {
-            # Load image into memory stream to avoid file locks
+            # Load into memory so the original JPEG is not left locked.
             $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
-            $ms = New-Object System.IO.MemoryStream(,$bytes)
-            $jpeg = [System.Drawing.Image]::FromStream($ms)
-            
-            # Set up LZW compression (lossless)
-            $encoderParams = New-Object System.Drawing.Imaging.EncoderParameters(1)
-            $encoderParams.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter(
-                [System.Drawing.Imaging.Encoder]::Compression, 
+            $memoryStream = [System.IO.MemoryStream]::new([byte[]]$bytes)
+            $jpeg = [System.Drawing.Image]::FromStream($memoryStream)
+
+            $encoderParams = [System.Drawing.Imaging.EncoderParameters]::new(1)
+            $encoderParams.Param[0] = [System.Drawing.Imaging.EncoderParameter]::new(
+                [System.Drawing.Imaging.Encoder]::Compression,
                 [long][System.Drawing.Imaging.EncoderValue]::CompressionLZW
             )
-            
-            $codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | 
-                Where-Object { $_.MimeType -eq 'image/tiff' }
-            
-            # Save to TIFF folder with .tif extension
-            $outputPath = Join-Path $tiffFolder ($file.BaseName + '.tif')
-            
+
+            $codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() |
+                Where-Object MimeType -eq 'image/tiff'
+
+            $outputPath = Join-Path -Path $tiffFolder -ChildPath ($file.BaseName + '.tif')
             $jpeg.Save($outputPath, $codec, $encoderParams)
-            
+
             Write-Host "[$counter/$total] Converted: $($file.Name) -> TIFF\$($file.BaseName).tif"
-            
-            # Clean up
-            $jpeg.Dispose()
-            $ms.Dispose()
-            
-            $counter++
-            
         } catch {
             Write-Host "[$counter/$total] ERROR converting $($file.Name): $_" -ForegroundColor Red
-            $counter++
+        } finally {
+            if ($null -ne $jpeg) {
+                $jpeg.Dispose()
+            }
+            if ($null -ne $memoryStream) {
+                $memoryStream.Dispose()
+            }
         }
+
+        $counter++
     }
 
     Write-Host "`nDone! Processed $($counter - 1) files into TIFF.`n" -ForegroundColor Green
 
-    # Move to next species alphabetically
-    $current = Get-Item .
-    $parent  = $current.Parent
-    $folders = Get-ChildItem -Path $parent.FullName -Directory | Sort-Object Name
+    # Move to the next species alphabetically within the same genus folder.
+    $current = $folder
+    $parent = $current.Parent
+    $folders = @(Get-ChildItem -LiteralPath $parent.FullName -Directory | Sort-Object Name)
 
-    # Find the index of the current folder
-    $index = $folders.Name.IndexOf($current.Name)
+    $index = -1
+    for ($i = 0; $i -lt $folders.Count; $i++) {
+        if ($folders[$i].FullName -eq $current.FullName) {
+            $index = $i
+            break
+        }
+    }
 
-    # If there is a next folder, move into it
     if ($index -ge 0 -and $index -lt ($folders.Count - 1)) {
-        $nextFolder = $folders[$index + 1].FullName
-        $nextFolderName = $folders[$index + 1].Name
-        Set-Location $nextFolder
-        #Write-Host "Moved to next folder: $nextFolder"
-        
+        $nextFolder = $folders[$index + 1]
+        Set-Location -LiteralPath $nextFolder.FullName
+
         $lines = @(
             "Next steps:",
-            "  1. Folder updated to the next species ($nextFolderName)",
-            "  2. Run script again to start processing next species of scans"
+            "  1. Folder updated to the next species ($($nextFolder.Name))",
+            "  2. Run the script again to start processing the next species of scans"
         )
-        foreach ($l in $lines) {
-            Write-Host $l.PadRight($width) -ForegroundColor Magenta -BackgroundColor Black
+
+        foreach ($line in $lines) {
+            Write-Host $line.PadRight($width) -ForegroundColor Magenta -BackgroundColor Black
         }
+
         Write-Host
-    }
-    else {
-        Write-Host "You are already in the last folder. No next folder exists."
-        cd ..
+    } else {
+        Write-Host "You are already in the last species folder. No next folder exists."
+        Set-Location -LiteralPath $parent.FullName
     }
 
-    exit
+    return
 }
 
-# Case 3: Both folders exist - check if they contain files
+# Case 3: Both folders exist; check whether they contain files.
 if ($jpegExists -and $tiffExists) {
-    $jpegFiles = Get-ChildItem -Path $jpegFolder -File
-    $tiffFiles = Get-ChildItem -Path $tiffFolder -File
-    
+    $jpegFiles = @(Get-ChildItem -LiteralPath $jpegFolder -File)
+    $tiffFiles = @(Get-ChildItem -LiteralPath $tiffFolder -File)
+
     if ($jpegFiles.Count -gt 0 -or $tiffFiles.Count -gt 0) {
-        Write-Host "`nWARNING: Folders already exist and contain files, possibly already processed. Double check!" -ForegroundColor Red
+        Write-Host "`nWARNING: Folders already exist and contain files; this species may already be processed. Double-check!" -ForegroundColor Red
         Write-Host "JPEG folder: $($jpegFiles.Count) files" -ForegroundColor Red
         Write-Host "TIFF folder: $($tiffFiles.Count) files`n" -ForegroundColor Red
     } else {
-        Write-Host "`nBoth folders exist but are empty. Deleting folders and restarting...`n" -ForegroundColor Yellow
-        Remove-Item $jpegFolder -Force
-        Remove-Item $tiffFolder -Force
-        Write-Host "Folders deleted. Rerunning script...`n" -ForegroundColor Green
-        
-        # Rerun the script
-        & $PSCommandPath
+        Write-Host "`nBoth folders exist but are empty. Deleting the empty folders and restarting...`n" -ForegroundColor Yellow
+        Remove-Item -LiteralPath $jpegFolder -Force
+        Remove-Item -LiteralPath $tiffFolder -Force
+        Write-Host "Empty folders deleted. Rerunning the script...`n" -ForegroundColor Green
+
+        # Keep the same species target even though the script is stored elsewhere.
+        & $PSCommandPath -SpeciesFolder $folder.FullName
     }
-    
-    exit
+
+    return
 }
